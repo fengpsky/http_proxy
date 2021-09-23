@@ -68,6 +68,7 @@ struct event_watermark {
   it is fairly volatile, and WILL change in future versions of the code.
 **/
 struct bufferevent {
+    void *data;
 	/** Event base for which this bufferevent was created. */
 	struct event_base *ev_base;
 	/** Pointer to a table of function pointers to set up how this
@@ -109,8 +110,10 @@ struct bufferevent {
 	short enabled;
     
     int32_t     sock_type;
-    struct sockaddr_storage sockaddr;
-    int8_t      addr_str[MAX_IPADDR_STR_LEN];
+    struct sockaddr_storage dst_sa;
+    int8_t      dst_addr_str[MAX_IPADDR_STR_LEN];
+    struct sockaddr_storage src_sa;
+    int8_t      src_addr_str[MAX_IPADDR_STR_LEN];
     uint32_t    is_set:1;//是否已经设置下面标志位
     uint32_t    reuseport:1;
     uint32_t    deferred_accept:1;

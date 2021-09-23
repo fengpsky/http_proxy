@@ -172,6 +172,93 @@ eventcb(struct bufferevent *bev, short what, void *ctx)
 }
 
 
+int32_t new_init_server_sock(struct bufferevent *bev)
+{
+    ev_socket sockfd = -1;
+    sockfd = socket(bev->src_sa.ss_family, bev->sock_type, 0);
+    if (sockfd < 0) {
+        ev_error_msg("create fd failed errno:%d %m.", ev_errno);
+        goto failed;
+    }
+    
+    evutil_socket_connect_(evutil_socket_t *fd_ptr, const struct sockaddr *sa, int socklen)
+    
+
+failed:
+    return -1;
+}
+
+
+
+
+static void
+process_rbuf_cb(struct bufferevent *bev, void *ctx)
+{
+	struct evbuffer *src, *dst;
+    struct  ev_http_request *r = NULL, *peer_upstream = NULL;
+    struct bufferevent *b_peer = NULL;
+	size_t len;
+	src = bufferevent_get_input(bev);
+	len = evbuffer_get_length(src);
+    if (len <= 0) {
+        ev_error_msg("recv len=%d from normal read\n", len);
+        return;
+    }
+    r =  mm_malloc(sizeof(ev_http_request));
+    if (r == NULL) {
+        ev_error_msg("malloc size[%d] failed errno:%d %m.", sizeof(ev_http_request), ev_errno); 
+        goto out;
+    }
+    r->buf_ev = bev;
+    bev->data = r;
+    
+    peer_upstream = mm_malloc(sizeof(ev_http_request));
+    if (peer_upstream == NULL) {
+        ev_error_msg("malloc size[%d] failed errno:%d %m.", sizeof(ev_http_request), ev_errno); 
+        goto out;
+    }
+    b_peer = bufferevent_socket_new(work_base, -1,
+		    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
+    if (b_peer == NULL) {
+        ev_error_msg("new bufferevent_socket failed errno:%d %m.", ev_errno); 
+        goto out;
+    }
+    
+    peer_upstream->buf_ev = b_peer;
+    b_peer->data = b_peer;
+    
+    r->peer_http = peer_upstream;
+    peer_upstream->peer_http = r;
+
+    
+    
+#if 0	
+    if (!partner) {
+		evbuffer_drain(src, len);
+		return;
+	}
+	dst = bufferevent_get_output(partner);
+	evbuffer_add_buffer(dst, src);
+
+	if (evbuffer_get_length(dst) >= MAX_OUTPUT) {
+		/* We're giving the other side data faster than it can
+		 * pass it on.  Stop reading here until we have drained the
+		 * other side to MAX_OUTPUT/2 bytes. */
+		bufferevent_setcb(partner, readcb, drained_writecb,
+		    eventcb, bev);
+		bufferevent_setwatermark(partner, EV_WRITE, MAX_OUTPUT/2,
+		    MAX_OUTPUT);
+		bufferevent_disable(bev, EV_READ);
+	}
+#endif
+
+failed:
+    //if ()
+    return;
+}
+
+
+
 int32_t 
 assign_listener_to_new_event(struct listening_st *listener, 
             struct bufferevent *b_in)
@@ -191,7 +278,7 @@ assign_listener_to_new_event(struct listening_st *listener,
     b_in->tcp_keepcnt = listener->tcp_keepcnt;
     b_in->sock_rcvbuf = listener->rcvbuf;
     b_in->sock_sndbuf = listener->sndbuf;
-
+    b_in->sock_type = listener->sock_type;
     
     if(listener->reuseport) {
         (void)evutil_set_socket_options(fd, EV_SO_REUSEPORT, on);
@@ -208,10 +295,30 @@ assign_listener_to_new_event(struct listening_st *listener,
     if (listener->ipv6only) {
         (void)evutil_set_socket_options(fd, EV_IPV6_V6ONLY, on);
     }
-    b_in->ssl = 1;
-    if(b_in->en_keepalive) {
 
-    } 
+    if (b_in->en_keepalive) {
+        (void)evutil_set_socket_options(fd, EV_SO_KEEPALIVE, on);
+    }
+
+    if (b_in->tcp_keepidle) {
+        (void)evutil_set_socket_options(fd, EV_TCP_KEEPIDLE, b_in->tcp_keepidle);           
+    }
+
+    if (b_in->tcp_keepintvl) {
+        (void)evutil_set_socket_options(fd, EV_TCP_KEEPINTVL, b_in->tcp_keepintvl);            
+    }
+
+    if (b_in->tcp_keepcnt) {
+        (void)evutil_set_socket_options(fd, EV_TCP_KEEPCNT, b_in->tcp_keepcnt);     
+    }
+
+    if (b_in->sock_rcvbuf) {
+        (void)evutil_set_socket_options(fd, EV_SO_RCVBUF, b_in->sock_rcvbuf); 
+    }
+
+    if (b_in->sock_sndbuf) {
+        (void)evutil_set_socket_options(fd, EV_SO_SNDBUF, b_in->sock_sndbuf); 
+    }
    
 }
 
@@ -219,18 +326,47 @@ static void
 accept_event(struct listening_st *listener, ev_socket  fd, void *userdata)
 {
 	struct bufferevent *b_in = NULL;
-    int32_t on = 1;
+    int32_t on = 1, ret = 0;
     
-	/* Create two linked bufferevent objects: one to connect, one for the
+    socklen_t src_len = sizeof(struct sockaddr_storage), dst_len = sizeof(struct sockaddr_storage);
+    
+    /* Create two linked bufferevent objects: one to connect, one for the
 	 * new connection */
-	b_in = bufferevent_socket_new(base, fd,
+	b_in = bufferevent_socket_new(work_base, fd,
 	    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
-
+    assert(b_in);
     
-	assert(b_in);
-
-	bufferevent_setcb(b_in, readcb, NULL, eventcb, NULL);
+    ret = getsockname(fd, (struct sockaddr *)&b_in->dst_sa, &dst_len);
+    if (ret) {
+        ev_error_msg("get sock name failed; fd:[%d] errno:%d %m.\n", fd, ev_errno);
+        goto out;
+    }
+    ret = getpeername(fd, (struct sockaddr *)&b_in->src_sa, &src_len);
+    if (ret) {
+        ev_error_msg("get peer name failed; fd:[%d] errno:%d %m.\n", fd, ev_errno);
+        goto out;
+    }
+    
+	
+    
+    assign_listener_to_new_event(listener, b_in);
+    
+	bufferevent_setcb(b_in, process_rbuf_cb, NULL, eventcb, NULL);
 	bufferevent_enable(b_in, EV_READ|EV_WRITE);
+
+    return;
+    
+out:
+    if (fd) {
+        ev_close(fd);
+        fd = -1;
+    }
+    
+    if (b_in) {
+        bufferevent_free(b_in);
+        b_in = NULL;
+    }
+    return;
 }
 
 
@@ -252,10 +388,12 @@ ev_listener_read_cb(ev_socket fd, short what, void *p)
             /* This can happen with some older linux kernels in
              * response to nmap. */
             evutil_closesocket(new_fd);
+            ev_info_msg("response to nmap so close fd \n");
             continue;
         }
 
         if (ls->process_new_fd_cb == NULL) {
+            ev_info_msg("new fd process cb is null\n");
             evutil_closesocket(new_fd);
             return;
         }

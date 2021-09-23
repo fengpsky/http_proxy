@@ -312,10 +312,19 @@ extern "C" {
 
 typedef int ev_socket;
 
+#ifndef _WIN32
+	#define ev_close close
+#else
+	#define ev_close closesocket
+#endif
+
+
 #define ev_errno       errno
 
 #define  EV_OK          0
 #define  EV_ERROR      -1
+
+#define MM_ERROR_OUT(x) (ev_error_msg("malloc size[%d] failederrno:%d %m.", x, ev_errno); goto out;) 
 
 
 /**
