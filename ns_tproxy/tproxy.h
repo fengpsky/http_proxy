@@ -76,9 +76,14 @@ struct listening_st {
     uint32_t    http2:1;
     uint32_t    ssl:1;
     uint32_t    en_keepalive:1;
+    uint32_t    tcp_nodelay:1;
+    uint32_t    en_tproxy:1;
+    uint32_t    tcp_crok:1;
+    
     int32_t     tcp_keepidle;
     int32_t     tcp_keepintvl;
     int32_t     tcp_keepcnt;
+    
     int32_t     rcvbuf;
     int32_t     sndbuf;
     

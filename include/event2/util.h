@@ -34,6 +34,15 @@
  */
 #include <event2/visibility.h>
 
+#define strcpy strcpy_is_forbidden_use_memcpy_instead@
+#define sprintf sprintf_is_forbidden_use_snprintf_instead@
+#ifdef alloca
+#undef alloca
+#endif
+#define alloca alloca_is_forbidden@
+
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif

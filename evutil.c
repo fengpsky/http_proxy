@@ -451,7 +451,7 @@ int evutil_set_socket_options(evutil_socket_t sfd, int32_t opt, int32_t optval)
             ret = -1;
         }
         break;
-
+//Enables or disables the use of the TCP_NOPUSH socket option on FreeBSD or the TCP_CORK socket option on Linux
     case EV_TCP_NODELAY:
         if (setsockopt(sfd, IPPROTO_TCP, TCP_NODELAY, (char *)&one, sizeof(one)) < 0) {
             ret = -1;
