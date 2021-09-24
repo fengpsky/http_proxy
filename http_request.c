@@ -117,16 +117,93 @@ failed:
     return -1;
 }
 
+int32_t 
+http_backend_connect(struct ev_http_request *r ,  struct ev_http_backend *u)
+{
 
+
+}
+
+
+int32_t http_backend_stream_create(struct ev_http_request *r)
+{   
+    struct ev_http_backend *bend_stream = NULL;
+    struct bufferevent *bufev = NULL;
+    
+    bend_stream = mm_malloc(sizeof(ev_http_backend));
+    if (bend_stream == NULL) {
+        ev_error_msg("malloc size[%d] failed errno:%d %m.", sizeof(ev_http_request), ev_errno); 
+        goto failed;
+    }
+    bufev = bufferevent_socket_new(work_base, -1,
+		    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
+    if (bufev == NULL) {
+        ev_error_msg("new bufferevent_socket failed errno:%d %m.", ev_errno); 
+        goto failed;
+    }
+    
+    bend_stream->buf_ev = bufev;
+    bufev->data = bend_stream;
+    
+    r->bk_http = bend_stream;
+    bend_stream->data = r;
+    return 0;
+    
+failed:
+    //-----------------
+    return -1;
+
+}
+
+int32_t http_init_backend_stream(struct ev_http_request *r)
+{
+    struct bufferevent *req_bev = NULL;
+    struct bufferevent *bkend_bev = NULL;
+    struct ev_http_backend *bk_stream = NULL;
+
+    bk_stream = r->bk_http;
+
+    bkend_bev = bk_stream->buf_ev;
+    req_bev = r->buf_ev;
+
+    bkend_bev->sock_type = req_bev->sock_type;
+    
+    bkend_bev->dst_sa = req_bev->dst_sa;
+    memcpy(bkend_bev->dst_addr_str, req_bev->dst_addr_str, MAX_IPADDR_STR_LEN);    
+
+    bkend_bev->src_sa = req_bev->dst_sa;
+    memcpy(bkend_bev->dst_addr_str, req_bev->dst_addr_str, MAX_IPADDR_STR_LEN); 
+    
+    bkend_bev->is_set =  req_bev->is_set;
+    //b_peer->reuseport = 
+    //b_peer->deferred_accept = 
+    bkend_bev->fastopen = req_bev->fastopen; 
+    bkend_bev->ipv6only = req_bev->ipv6only;
+    bkend_bev->http2 = req_bev->http2;
+    bkend_bev->ssl = req_bev->ssl;
+    bkend_bev->en_keepalive =  req_bev->en_keepalive;
+    bkend_bev->tcp_keepidle =  req_bev->tcp_keepidle;
+    bkend_bev->tcp_keepintvl = req_bev->tcp_keepintvl;
+    bkend_bev->tcp_keepcnt = req_bev->tcp_keepcnt;
+    bkend_bev->sock_rcvbuf =  req_bev->sock_rcvbuf;
+    bkend_bev->sock_sndbuf = req_bev->sock_sndbuf;
+    bkend_bev->en_tproxy = req_bev->en_tproxy;
+    bkend_bev->tcp_nodelay = req_bev->tcp_nodelay;
+    bkend_bev->tcp_crok = req_bev->tcp_crok;
+    
+
+}
 
 
 
 int32_t http_proxy_handler_cb(struct bufferevent *bev, void *ctx)
 {
 	struct evbuffer *src, *dst;
-    struct  ev_http_request *r = NULL, *peer_upstream = NULL;
+    struct ev_http_request *r = NULL;
     struct bufferevent *b_peer = NULL;
 	size_t len;
+    int32_t ret = 0;
+    
 	src = bufferevent_get_input(bev);
 	len = evbuffer_get_length(src);
     if (len <= 0) {
@@ -136,51 +213,18 @@ int32_t http_proxy_handler_cb(struct bufferevent *bev, void *ctx)
     r =  mm_malloc(sizeof(ev_http_request));
     if (r == NULL) {
         ev_error_msg("malloc size[%d] failed errno:%d %m.", sizeof(ev_http_request), ev_errno); 
-        goto out;
+        goto failed;
     }
     r->buf_ev = bev;
     bev->data = r;
     
-    peer_upstream = mm_malloc(sizeof(ev_http_request));
-    if (peer_upstream == NULL) {
-        ev_error_msg("malloc size[%d] failed errno:%d %m.", sizeof(ev_http_request), ev_errno); 
-        goto out;
+    ret = http_backend_stream_create(r);
+    if (ret) {
+        ev_error_msg("create backend stream failed, src:%s dst:%s", bev->src_addr_str, bev->dst_addr_str); 
+        goto failed;    
     }
-    b_peer = bufferevent_socket_new(work_base, -1,
-		    BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
-    if (b_peer == NULL) {
-        ev_error_msg("new bufferevent_socket failed errno:%d %m.", ev_errno); 
-        goto out;
-    }
-    
-    peer_upstream->buf_ev = b_peer;
-    b_peer->data = peer_upstream;
-    
-    r->peer_http = peer_upstream;
-    peer_upstream->peer_http = r;
 
-    b_peer->sock_type = bev->sock_type;
-    
-    b_peer->dst_sa = bev->dst_sa;
-    memcpy(b_peer->dst_addr_str, bev->dst_addr_str, MAX_IPADDR_STR_LEN);    
-
-    b_peer->src_sa = bev->dst_sa;
-    memcpy(b_peer->dst_addr_str, bev->dst_addr_str, MAX_IPADDR_STR_LEN); 
-    
-    b_peer->is_set =  bev->is_set;
-    //b_peer->reuseport = 
-    //b_peer->deferred_accept = 
-    b_peer->fastopen = bev->fastopen; 
-    b_peer->ipv6only = bev->ipv6only;
-    b_peer->http2 = bev->http2;
-    b_peer->ssl = bev->ssl;
-    b_peer->en_keepalive =  bev->en_keepalive;
-    b_peer->tcp_keepidle =  bev->tcp_keepidle;
-    b_peer->tcp_keepintvl = bev->tcp_keepintvl;
-    b_peer->tcp_keepcnt = bev->tcp_keepcnt;
-    b_peer->sock_rcvbuf =  bev->sock_rcvbuf;
-    b_peer->sock_sndbuf = bev->sock_sndbuf;
-    
+    ret = http_init_backend_stream(r);
     
     
 
