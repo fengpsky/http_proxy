@@ -120,8 +120,68 @@ failed:
 int32_t 
 http_backend_connect(struct ev_http_request *r ,  struct ev_http_backend *u)
 {
+    ev_socket s = -1;
+    int type = 0, ret = -1;
+    struct bufferevent *bk_bev = u->buf_ev;
+    
+    type = bk_bev->sock_type ? bk_bev->sock_type : SOCK_STREAM;
 
+    s = socket(bk_bev->src_sa.ss_family, type, 0);
 
+    if (s < 0) {
+        ev_error_msg("new socket failed errno:%d %m. ip addr:%s ->:%s\n", 
+            ev_errno, bk_bev->src_addr_str, bk_bev->dst_addr_str);
+        goto failed;
+    }
+    if (bind(s, (struct sockaddr *)&bk_bev->dst_sa, sizeof(bk_bev->dst_sa)) < 0) {
+        ev_error_msg("bind socket fd[%d] closeonexec failed,errno:%d %m. ip addr:%s ->:%s\n", 
+            ev_errno, bk_bev->src_addr_str, bk_bev->dst_addr_str);
+        goto failed;
+    }
+    if (evutil_make_socket_nonblocking(s) < 0) {
+        ev_error_msg("set socket fd[%d] noblocking failed,errno:%d %m. ip addr:%s ->:%s\n", 
+            ev_errno, bk_bev->src_addr_str, bk_bev->dst_addr_str);
+        goto failed;
+    }
+    
+    if (evutil_make_socket_closeonexec(s) < 0) {
+        ev_error_msg("set socket fd[%d] closeonexec failed,errno:%d %m. ip addr:%s ->:%s\n", 
+            ev_errno, bk_bev->src_addr_str, bk_bev->dst_addr_str);
+        goto failed;
+    }
+
+    if (bk_bev->sock_rcvbuf) {
+        (void)evutil_set_socket_options(s, EV_SO_RCVBUF, bk_bev->sock_rcvbuf);
+    }
+
+    if (bk_bev->sock_sndbuf) {
+        (void)evutil_set_socket_options(s, EV_SO_SNDBUF, bk_bev->sock_sndbuf);
+    }
+    
+    if (bk_bev->tcp_nodelay) {
+       (void)evutil_set_socket_options(s, EV_TCP_NODELAY, bk_bev->tcp_nodelay);
+    }
+    
+    if (bk_bev->en_tproxy) {
+        (void)evutil_set_socket_options(s, EV_IP_TRANSPARENT, bk_bev->en_tproxy);
+    }
+
+    event_change_fd(&bk_bev->ev_read, s);
+    event_change_fd(&bk_bev->ev_write, s);
+    
+    ret = connect(s, &bk_bev->dst_sa, sizeof(bk_bev->dst_sa));
+    if (ret < 0) {
+		if (EVUTIL_ERR_CONNECT_RETRIABLE(ev_errno) || EVUTIL_ERR_IS_EAGAIN(ev_errno)) {
+            struct bufferevent_private *bufev_p = BEV_UPCAST(bev);
+        }else {
+            (EVUTIL_ERR_CONNECT_REFUSED(e))
+        }
+    }
+    
+    return EV_OK;
+failed:
+
+    return EV_ERROR;
 }
 
 

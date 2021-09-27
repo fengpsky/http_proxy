@@ -2109,6 +2109,11 @@ event_base_once(struct event_base *base, evutil_socket_t fd, short events,
 	return (0);
 }
 
+int event_change_fd(struct event *ev, evutil_socket_t fd)
+{
+    ev->ev_fd = fd;
+}
+
 int
 event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, short events, void (*callback)(evutil_socket_t, short, void *), void *arg)
 {

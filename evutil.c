@@ -516,7 +516,7 @@ int evutil_set_socket_options(evutil_socket_t sfd, int32_t opt, int32_t optval)
     }
 
     if (ret) {
-        event_warn("set socket[%d] options failed, optname:%u optval:%d\n", sfd, opt, optval);
+        event_warn("set socket[%d] options:%u optval:%d failed, errno:%d %m.\n", sfd, opt, optval, ev_errno);
     }
     return ret;
 }

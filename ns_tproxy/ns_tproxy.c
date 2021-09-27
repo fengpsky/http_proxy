@@ -303,7 +303,7 @@ int32_t create_listening_socketfd()
     struct listening_st *ls= NULL;
     int family = 0, ret = 0;
 
-    int socktype = SOCK_STREAM | EVUTIL_SOCK_NONBLOCK | EVUTIL_SOCK_CLOEXEC;
+    //int socktype = SOCK_STREAM | EVUTIL_SOCK_NONBLOCK | EVUTIL_SOCK_CLOEXEC;
     
     for (i = 0; i < g_cpu_num; ++i){
         ls = (struct listening_st*)&listenv4_ary[i];
@@ -356,8 +356,7 @@ int32_t  init_listen_resource()
         ls = (struct listening_st*)&listenv4_ary[i];
         
         ls->sfd = -1;
-        //ls->sock_type = SOCK_STREAM | EVUTIL_SOCK_NONBLOCK | EVUTIL_SOCK_CLOEXEC;;
-        ls->sock_type = SOCK_STREAM;
+        ls->sock_type = SOCK_STREAM|EVUTIL_SOCK_NONBLOCK | EVUTIL_SOCK_CLOEXEC;
         sin = (struct sockaddr_in*)&(ls->sockaddr);
         sin->sin_port = htons(MAX_LISTEN_PORT - i);
         sin->sin_addr.s_addr = htonl(0x7f000001);
